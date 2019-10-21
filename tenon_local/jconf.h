@@ -98,5 +98,5 @@ typedef struct {
 jconf_t *read_jconf(const char *file);
 void parse_addr(const char *str, ss_addr_t *addr);
 void free_addr(ss_addr_t *addr);
-
+void get_route_info(const char *file, jconf_t* conf);
 #endif // _JCONF_H

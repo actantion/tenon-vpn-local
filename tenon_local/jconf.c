@@ -368,3 +368,70 @@ read_jconf(const char *file)
     json_value_free(obj);
     return &conf;
 }
+
+
+void get_route_info(const char *file, jconf_t* conf)
+{
+    char *buf;
+    json_value *obj;
+
+    FILE *f = fopen(file, "rb");
+    if (f == NULL) {
+        FATAL("Invalid config path.");
+    }
+
+    fseek(f, 0, SEEK_END);
+    long pos = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    if (pos < 0) {
+        FATAL("Invalid config path.");
+    }
+
+    if (pos >= MAX_CONF_SIZE) {
+        FATAL("Too large config file.");
+    }
+
+    buf = ss_malloc(pos + 1);
+    if (buf == NULL) {
+        FATAL("No enough memory.");
+    }
+
+    int nread = fread(buf, pos, 1, f);
+    if (!nread) {
+        FATAL("Failed to read the config file.");
+    }
+    fclose(f);
+
+    buf[pos] = '\0'; // end of string
+
+    json_settings settings = { 0UL, 0, NULL, NULL, NULL };
+    char error_buf[512];
+    obj = json_parse_ex(&settings, buf, pos, error_buf);
+
+    if (obj == NULL) {
+        FATAL(error_buf);
+    }
+
+    if (obj->type == json_object) {
+        unsigned int i;
+        for (i = 0; i < obj->u.object.length; i++) {
+            char *name        = obj->u.object.values[i].name;
+            json_value *value = obj->u.object.values[i].value;
+            if (strcmp(name, "route_ip") == 0) {
+                char* route_ip = to_string(value);
+                conf->route_ip = atoi(route_ip);
+                ss_free(route_ip);
+            } else if (strcmp(name, "route_port") == 0) {
+                char* route_port = to_string(value);
+                conf->route_port = atoi(route_port);
+                ss_free(route_port);
+            }
+        }
+    } else {
+        FATAL("Invalid config file");
+    }
+
+    ss_free(buf);
+    json_value_free(obj);
+}

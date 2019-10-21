@@ -186,6 +186,17 @@ static server_t *new_server(int fd);
 
 static struct cork_dllist connections;
 
+static int connect_times = 0;
+
+
+struct route_ip_info {
+    unsigned int ip;
+    unsigned short port;
+};
+
+struct route_ip_info* route_ip_arr[2];
+static int valid_index = 0;
+
 #ifndef __MINGW32__
 int
 setnonblocking(int fd)
@@ -476,10 +487,10 @@ server_handshake(EV_P_ ev_io *w, buffer_t *buf)
     uint16_t dst_port = load16_be(abuf->data + abuf->len - 2);
 
     if (atyp == SOCKS5_ATYP_IPV4 || atyp == SOCKS5_ATYP_IPV6) {
-        if (dst_port == http_protocol->default_port)
+        if (http_protocol != NULL && dst_port == http_protocol->default_port)
             hostname_len = http_protocol->parse_packet(buf->data + 3 + abuf->len,
                                                        buf->len - 3 - abuf->len, &hostname);
-        else if (dst_port == tls_protocol->default_port)
+        else if (tls_protocol != NULL && dst_port == tls_protocol->default_port)
             hostname_len = tls_protocol->parse_packet(buf->data + 3 + abuf->len,
                                                       buf->len - 3 - abuf->len, &hostname);
         if (hostname_len == -1 && buf->len < SOCKET_BUF_SIZE && server->stage != STAGE_SNI) {
@@ -812,6 +823,7 @@ server_stream(EV_P_ ev_io *w, buffer_t *buf)
                     ip_port_t vpn_info;
                     vpn_info.ip = vpn_ip;
                     vpn_info.port = htons(vpn_port);
+                    LOGI("use vpn ip %d:%d", vpn_ip, vpn_port);
                     memcpy(server_head, &vpn_info, sizeof(vpn_info));
                     start_pos = sizeof(vpn_info);
                 }
@@ -1065,6 +1077,7 @@ remote_timeout_cb(EV_P_ ev_timer *watcher, int revents)
 static void
 remote_recv_cb(EV_P_ ev_io *w, int revents)
 {
+    connect_times = 0;
     remote_ctx_t *remote_recv_ctx = (remote_ctx_t *)w;
     remote_t *remote              = remote_recv_ctx->remote;
     server_t *server              = remote->server;
@@ -1367,23 +1380,57 @@ close_and_free_server(EV_P_ server_t *server)
     }
 }
 
+static struct sockaddr * create_remote_fd() {
+    char str_host[255] = { 0 };
+    char str_port[16] = { 0 };
+    int now_valid_idx = valid_index;
+    if (use_smart_route != 0) {
+        inet_ntop(AF_INET, (const void *)(&route_ip_arr[now_valid_idx]->ip), str_host, INET_ADDRSTRLEN);
+        snprintf(str_port, 16, "%d", route_ip_arr[now_valid_idx]->port);
+    } else {
+        inet_ntop(AF_INET, (const void *)(&vpn_ip), str_host, INET_ADDRSTRLEN);
+        snprintf(str_port, 16, "%d", vpn_port);
+    }
+    char *host = str_host;
+    char *port = str_port;
+    
+    struct sockaddr_storage *storage = ss_malloc(sizeof(struct sockaddr_storage));
+    memset(storage, 0, sizeof(struct sockaddr_storage));
+    if (get_sockaddr(host, port, storage, 1, ipv6first) == -1) {
+        FATAL("failed to resolve the provided hostname");
+        return NULL;
+    }
+    return (struct sockaddr *)storage;
+}
+
 static remote_t *
 create_remote(listen_ctx_t *listener,
               struct sockaddr *addr,
               int direct)
 {
-    struct sockaddr *remote_addr;
-
-    int index = rand() % listener->remote_num;
-    if (addr == NULL) {
-        remote_addr = listener->remote_addr[index];
-    } else {
-        remote_addr = addr;
+    if (connect_times > 5) {
+        exit(0);
     }
-
+    
+    connect_times++;
+    struct sockaddr *remote_addr = create_remote_fd();
+    LOGI("create new remote now.");
+    struct sockaddr *tmp_remote_addr = remote_addr;
+    if (remote_addr == NULL) {
+        int index = rand() % listener->remote_num;
+        if (addr == NULL) {
+            remote_addr = listener->remote_addr[index];
+        } else {
+            remote_addr = addr;
+        }
+    }
+    
     int remotefd = socket(remote_addr->sa_family, SOCK_STREAM, IPPROTO_TCP);
 
     if (remotefd == -1) {
+        if (tmp_remote_addr != NULL) {
+            ss_free(tmp_remote_addr);
+        }
         ERROR("socket");
         return NULL;
     }
@@ -1432,6 +1479,9 @@ create_remote(listen_ctx_t *listener,
         LOGI("remote: %s:%hu", inet_ntoa(sockaddr->sin_addr), ntohs(sockaddr->sin_port));
     }
 
+    if (tmp_remote_addr != NULL) {
+        ss_free(tmp_remote_addr);
+    }
     return remote;
 }
 
@@ -1509,6 +1559,37 @@ accept_cb(EV_P_ ev_io *w, int revents)
     ev_io_start(EV_A_ & server->recv_ctx->io);
 }
 
+static int split(char dst[][64], char* str, const char* spl) {
+    int n = 0;
+    char *result = NULL;
+    result = strtok(str, spl);
+    while( result != NULL ) {
+        strcpy(dst[n++], result);
+        result = strtok(NULL, spl);
+    }
+    return n;
+}
+
+static bool stoped = false;
+char* svr_conf_path = NULL;
+static void* update_config_thread(void* test) {
+    if (svr_conf_path != NULL) {
+        while (!stoped) {
+            jconf_t conf;
+            get_route_info(svr_conf_path, &conf);
+            int invalid_idx = 0;
+            if (valid_index == 0) {
+                invalid_idx = 1;
+            }
+            route_ip_arr[invalid_idx]->ip = conf.route_ip;
+            route_ip_arr[invalid_idx]->port = conf.route_port;
+            valid_index = invalid_idx;
+            sleep(1);
+        }
+    }
+    return NULL;
+}
+
 #ifndef LIB_ONLY
 int
 main(int argc, char **argv)
@@ -1539,7 +1620,11 @@ main(int argc, char **argv)
     ss_addr_t remote_addr[MAX_REMOTE_NUM];
     char *remote_port = NULL;
 
+    route_ip_arr[0] = (struct route_ip_info*)ss_malloc(sizeof(struct route_ip_info));
+    route_ip_arr[1] = (struct route_ip_info*)ss_malloc(sizeof(struct route_ip_info));
     memset(remote_addr, 0, sizeof(ss_addr_t) * MAX_REMOTE_NUM);
+
+    
     srand(time(NULL));
 
     static struct option long_options[] = {
@@ -1695,6 +1780,7 @@ main(int argc, char **argv)
         LOGI("Dddddddddddsdddddddddddd3333");
     if (conf_path != NULL) {
         LOGI("Dddddddddddsdddddddddddd333344444");
+        svr_conf_path = conf_path;
         jconf_t *conf = read_jconf(conf_path);
         if (remote_num == 0) {
             remote_num = conf->remote_num;
@@ -1771,6 +1857,10 @@ main(int argc, char **argv)
         pubkey = conf->pubkey;
         enc_method = conf->enc_method;
 
+        route_ip_arr[0]->ip = route_ip;
+        route_ip_arr[0]->port = route_port;
+        route_ip_arr[1]->ip = route_ip;
+        route_ip_arr[1]->port = route_port;
         LOGI("use smart route[%d], route_ip[%u], route port[%d],"
             "vpn_ip[%u], vpn_port[%d], seckey[%s], pubkey[%s], method[%s]",
             use_smart_route, route_ip, route_port, vpn_ip, vpn_port, seckey, pubkey, enc_method);
@@ -2059,9 +2149,12 @@ main(int argc, char **argv)
     // Init connections
     cork_dllist_init(&connections);
 
+        pthread_t ntid;
+        pthread_create(&ntid,NULL,update_config_thread,NULL);
     // Enter the loop
     ev_run(loop, 0);
 
+        stoped = true;
     if (verbose) {
         LOGI("closed gracefully");
     }
@@ -2092,6 +2185,8 @@ main(int argc, char **argv)
     winsock_cleanup();
 #endif
 
+    ss_free(route_ip_arr[0]);
+    ss_free(route_ip_arr[1]);
     return ret_val;
 }
 
