@@ -309,6 +309,7 @@ free_connections(struct ev_loop *loop)
         remote_t *remote = server->remote;
         close_and_free_server(loop, server);
         close_and_free_remote(loop, remote);
+        printf("remove connections.\n");
     }
 }
 
@@ -1408,10 +1409,10 @@ create_remote(listen_ctx_t *listener,
               struct sockaddr *addr,
               int direct)
 {
-    if (connect_times > 5) {
-        exit(0);
+    if (connect_times > 10) {
+        kill(getpid(), SIGKILL);
     }
-    
+
     connect_times++;
     struct sockaddr *remote_addr = create_remote_fd();
     LOGI("create new remote now.");
@@ -2102,9 +2103,11 @@ main(int argc, char **argv)
 #endif
         if (listenfd == -1) {
             FATAL("bind() error");
+            exit(1);
         }
         if (listen(listenfd, SOMAXCONN) == -1) {
             FATAL("listen() error");
+            exit(1);
         }
         setnonblocking(listenfd);
 
@@ -2187,6 +2190,8 @@ main(int argc, char **argv)
 
     ss_free(route_ip_arr[0]);
     ss_free(route_ip_arr[1]);
+        
+        printf("exit local server success.\n");
     return ret_val;
 }
 
