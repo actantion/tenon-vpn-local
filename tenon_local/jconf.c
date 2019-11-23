@@ -156,7 +156,7 @@ jconf_t *
 read_jconf(const char *file)
 {
     static jconf_t conf;
-
+    conf.status_file = NULL;
     memset(&conf, 0, sizeof(jconf_t));
 
     char *buf;
@@ -358,6 +358,8 @@ read_jconf(const char *file)
                 conf.pubkey = to_string(value);
             } else if (strcmp(name, "enc_method") == 0) {
                 conf.enc_method = to_string(value);
+            } else if (strcmp(name, "status_file") == 0) {
+                conf.status_file = to_string(value);
             }
         }
     } else {

@@ -183,10 +183,10 @@ static void close_and_free_server(EV_P_ server_t *server);
 
 static remote_t *new_remote(int fd, int timeout);
 static server_t *new_server(int fd);
-
 static struct cork_dllist connections;
 
 static int connect_times = 0;
+static char* status_file = NULL;
 
 
 struct route_ip_info {
@@ -196,6 +196,21 @@ struct route_ip_info {
 
 struct route_ip_info* route_ip_arr[2];
 static int valid_index = 0;
+
+
+static void write_status_to_file(const char* status) {
+    if (status_file == NULL || status == NULL) {
+        return;
+    }
+    
+    FILE* fd = fopen(status_file, "w");
+    if (fd == NULL) {
+        return;
+    }
+    
+    fwrite(status, 1, strlen(status), fd);
+    fclose(fd);
+}
 
 #ifndef __MINGW32__
 int
@@ -824,7 +839,10 @@ server_stream(EV_P_ ev_io *w, buffer_t *buf)
                     ip_port_t vpn_info;
                     vpn_info.ip = vpn_ip;
                     vpn_info.port = htons(vpn_port);
-                    LOGI("use vpn ip %d:%d", vpn_ip, vpn_port);
+                    char str_host[64];
+                    inet_ntop(AF_INET, (const void *)(&vpn_ip), str_host, INET_ADDRSTRLEN);
+                    
+                    LOGI("use vpn ip [%s] %u:%d", str_host, vpn_ip, vpn_port);
                     memcpy(server_head, &vpn_info, sizeof(vpn_info));
                     start_pos = sizeof(vpn_info);
                 }
@@ -938,6 +956,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
                 return;
             }
         }
+        
         buf->len += r;
     }
 
@@ -1075,6 +1094,7 @@ remote_timeout_cb(EV_P_ ev_timer *watcher, int revents)
     close_and_free_server(EV_A_ server);
 }
 
+
 static void
 remote_recv_cb(EV_P_ ev_io *w, int revents)
 {
@@ -1103,6 +1123,23 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
         }
     }
 
+    if (r == 3) {
+        if (memcmp(server->buf->data + server->buf->len, "bwo", r) == 0) {
+            write_status_to_file("bwo");
+            exit(1);
+        }
+        
+        if (memcmp(server->buf->data + server->buf->len, "cni", r) == 0) {
+            write_status_to_file("cni");
+            exit(1);
+        }
+        
+        if (memcmp(server->buf->data + server->buf->len, "oul", r) == 0) {
+            write_status_to_file("oul");
+            exit(1);
+        }
+    }
+    
     server->buf->len = r;
 
     if (!remote->direct) {
@@ -1410,9 +1447,12 @@ create_remote(listen_ctx_t *listener,
               int direct)
 {
     if (connect_times > 10) {
-        kill(getpid(), SIGKILL);
+        write_status_to_file("cnn");
+        exit(1);
     }
 
+    printf("connect_times: %d", connect_times);
+    
     connect_times++;
     struct sockaddr *remote_addr = create_remote_fd();
     LOGI("create new remote now.");
@@ -1849,6 +1889,8 @@ main(int argc, char **argv)
             acl = !init_acl(conf->acl);
         }
 
+        status_file = conf->status_file;
+        write_status_to_file("ok");
         use_smart_route = conf->use_smart_route;
         route_ip = conf->route_ip;
         route_port = conf->route_port;
@@ -1863,8 +1905,8 @@ main(int argc, char **argv)
         route_ip_arr[1]->ip = route_ip;
         route_ip_arr[1]->port = route_port;
         LOGI("use smart route[%d], route_ip[%u], route port[%d],"
-            "vpn_ip[%u], vpn_port[%d], seckey[%s], pubkey[%s], method[%s]",
-            use_smart_route, route_ip, route_port, vpn_ip, vpn_port, seckey, pubkey, enc_method);
+            "vpn_ip[%u], vpn_port[%d], seckey[%s], pubkey[%s], method[%s] status_file[%s]",
+            use_smart_route, route_ip, route_port, vpn_ip, vpn_port, seckey, pubkey, enc_method, status_file);
     }
 
         

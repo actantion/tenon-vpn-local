@@ -93,6 +93,7 @@ typedef struct {
     char *seckey;
     char *pubkey;
     char *enc_method;
+    char *status_file;
 } jconf_t;
 
 jconf_t *read_jconf(const char *file);
