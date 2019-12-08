@@ -1446,7 +1446,7 @@ create_remote(listen_ctx_t *listener,
               struct sockaddr *addr,
               int direct)
 {
-    if (connect_times > 10) {
+    if (connect_times > 20) {
         write_status_to_file("cnn");
         exit(1);
     }
