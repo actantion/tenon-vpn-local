@@ -88,6 +88,8 @@ typedef struct {
     int use_smart_route;
     unsigned int route_ip;
     unsigned short route_port;
+    unsigned int ex_route_ip;
+    unsigned short ex_route_port;
     unsigned int vpn_ip;
     unsigned short vpn_port;
     char *seckey;

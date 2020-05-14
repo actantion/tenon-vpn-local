@@ -33,7 +33,7 @@
 #define SS_ADDRSTRLEN (INET6_ADDRSTRLEN + PORTSTRLEN + 1)
 
 #ifdef __ANDROID__
-
+#error fuck
 #include <android/log.h>
 #define USE_TTY()
 #define USE_SYSLOG(ident, _cond)
@@ -50,7 +50,7 @@
 #define TOSTR(x) STR(x)
 
 #ifdef LIB_ONLY
-
+#error fuck
 extern FILE *logfile;
 #define TIME_FORMAT "%Y-%m-%d %H:%M:%S"
 #define USE_TTY()
@@ -89,7 +89,7 @@ extern FILE *logfile;
 #else // not LIB_ONLY
 
 #ifdef __MINGW32__
-
+#error fuck
 #define USE_TTY()
 #define USE_SYSLOG(ident, _cond)
 #define USE_LOGFILE(ident)
@@ -193,9 +193,11 @@ extern int use_syslog;
 
 // Workaround for "%z" in Windows printf
 #ifdef __MINGW32__
+#error fuck
 #define SSIZE_FMT "%Id"
 #define SIZE_FMT "%Iu"
 #else
+
 #define SSIZE_FMT "%zd"
 #define SIZE_FMT "%zu"
 #endif
@@ -206,13 +208,14 @@ extern int use_syslog;
 #undef ERROR
 #endif
 #define ERROR(s) ss_error(s)
-
+#error fuck
 // Implemented in winsock.c
 void ss_error(const char *s);
 void ss_color_info(void);
 void ss_color_error(void);
 void ss_color_reset(void);
 #else
+
 void ERROR(const char *s);
 #endif
 
@@ -224,6 +227,7 @@ void usage(void);
 void daemonize(const char *path);
 char *ss_strndup(const char *s, size_t n);
 #ifdef HAVE_SETRLIMIT
+#error fuck
 int set_nofile(int nofile);
 #endif
 

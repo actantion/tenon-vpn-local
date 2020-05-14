@@ -157,6 +157,8 @@ read_jconf(const char *file)
 {
     static jconf_t conf;
     conf.status_file = NULL;
+    conf.ex_route_ip = 0;
+    conf.ex_route_port = 0;
     memset(&conf, 0, sizeof(jconf_t));
 
     char *buf;
@@ -347,7 +349,11 @@ read_jconf(const char *file)
             } else if (strcmp(name, "route_ip") == 0) {
                 conf.route_ip = atoi(to_string(value));
             } else if (strcmp(name, "route_port") == 0) {
-                conf.route_port = atoi(to_string(value));
+            conf.route_port = atoi(to_string(value));
+            } else if (strcmp(name, "ex_route_ip") == 0) {
+                conf.ex_route_ip = atoi(to_string(value));
+            } else if (strcmp(name, "ex_route_port") == 0) {
+                conf.ex_route_port = atoi(to_string(value));
             } else if (strcmp(name, "vpn_ip") == 0) {
                 conf.vpn_ip = atoi(to_string(value));
             } else if (strcmp(name, "vpn_port") == 0) {
@@ -427,6 +433,14 @@ void get_route_info(const char *file, jconf_t* conf)
             } else if (strcmp(name, "route_port") == 0) {
                 char* route_port = to_string(value);
                 conf->route_port = atoi(route_port);
+                ss_free(route_port);
+            } else if (strcmp(name, "ex_route_ip") == 0) {
+                char* route_ip = to_string(value);
+                conf->ex_route_ip = atoi(route_ip);
+                ss_free(route_ip);
+            } else if (strcmp(name, "ex_route_port") == 0) {
+                char* route_port = to_string(value);
+                conf->ex_route_port = atoi(route_port);
                 ss_free(route_port);
             }
         }

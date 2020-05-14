@@ -45,6 +45,7 @@
  */
 
 #ifdef HAVE_CONFIG_H
+#error fuck
 #include "config.h"
 #endif
 
@@ -65,6 +66,7 @@
 #include <netinet/in.h>
 #endif
 #ifdef LIB_ONLY
+#error fuck
 #include "shadowsocks.h"
 #endif
 
@@ -88,6 +90,7 @@
 
 #ifndef LIB_ONLY
 #ifdef __APPLE__
+
 #include <AvailabilityMacros.h>
 #if defined(MAC_OS_X_VERSION_10_10) && MAC_OS_X_VERSION_MIN_REQUIRED >= MAC_OS_X_VERSION_10_10
 #include <launch.h>
@@ -97,10 +100,12 @@
 #endif
 
 #ifndef EAGAIN
+#error fuck
 #define EAGAIN EWOULDBLOCK
 #endif
 
 #ifndef EWOULDBLOCK
+#error fuck
 #define EWOULDBLOCK EAGAIN
 #endif
 
@@ -110,6 +115,7 @@ int use_syslog = 0;
 
 
 #ifdef __ANDROID__
+#error fuck
 int vpn        = 0;
 uint64_t tx    = 0;
 uint64_t rx    = 0;
@@ -173,6 +179,7 @@ static void plugin_watcher_cb(EV_P_ ev_io *w, int revents);
 
 static int create_and_bind(const char *addr, const char *port);
 #ifdef HAVE_LAUNCHD
+
 static int launch_or_create(const char *addr, const char *port);
 #endif
 static remote_t *create_remote(listen_ctx_t *listener, struct sockaddr *addr, int direct);
@@ -195,6 +202,7 @@ struct route_ip_info {
 };
 
 struct route_ip_info* route_ip_arr[2];
+struct route_ip_info* ex_route_ip_arr[2];
 static int valid_index = 0;
 
 
@@ -761,10 +769,12 @@ server_stream(EV_P_ ev_io *w, buffer_t *buf)
             ev_timer_start(EV_A_ & remote->send_ctx->watcher);
         } else {
 #if defined(MSG_FASTOPEN) && !defined(TCP_FASTOPEN_CONNECT)
+#error fuck
             int s = -1;
             s = sendto(remote->fd, remote->buf->data, remote->buf->len, MSG_FASTOPEN,
                        (struct sockaddr *)&(remote->addr), remote->addr_len);
 #elif defined(TCP_FASTOPEN_WINSOCK)
+#error fuck
             DWORD s   = -1;
             DWORD err = 0;
             do {
@@ -811,6 +821,7 @@ server_stream(EV_P_ ev_io *w, buffer_t *buf)
 #else
             int s = -1;
 #if defined(CONNECT_DATA_IDEMPOTENT)
+
             ((struct sockaddr_in *)&(remote->addr))->sin_len = sizeof(struct sockaddr_in);
             sa_endpoints_t endpoints;
             memset((char *)&endpoints, 0, sizeof(endpoints));
@@ -821,6 +832,7 @@ server_stream(EV_P_ ev_io *w, buffer_t *buf)
                          CONNECT_RESUME_ON_READ_WRITE | CONNECT_DATA_IDEMPOTENT,
                          NULL, 0, NULL, NULL);
 #elif defined(TCP_FASTOPEN_CONNECT)
+            #error fuck
             int optval = 1;
             if (setsockopt(remote->fd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT,
                            (void *)&optval, sizeof(optval)) < 0)
@@ -836,6 +848,17 @@ server_stream(EV_P_ ev_io *w, buffer_t *buf)
                 uint8_t start_pos = 0;
                 if (use_smart_route != 0) {
                     // send vpn server ip
+                    if (ex_route_ip_arr[valid_index]->ip > 0 && ex_route_ip_arr[valid_index]->port > 0) {
+                        ip_port_t vpn_info;
+                        vpn_info.ip = ex_route_ip_arr[valid_index]->ip;
+                        vpn_info.port = htons(ex_route_ip_arr[valid_index]->port);
+                        char str_host[64];
+                        inet_ntop(AF_INET, (const void *)(&vpn_info.ip), str_host, INET_ADDRSTRLEN);
+                        
+                        LOGI("use ex route ip [%s] %u:%d", str_host, vpn_info.ip, vpn_info.port);
+                        memcpy(server_head, &vpn_info, sizeof(vpn_info));
+                        start_pos = sizeof(vpn_info);
+                    }
                     ip_port_t vpn_info;
                     vpn_info.ip = vpn_ip;
                     vpn_info.port = htons(vpn_port);
@@ -843,8 +866,8 @@ server_stream(EV_P_ ev_io *w, buffer_t *buf)
                     inet_ntop(AF_INET, (const void *)(&vpn_ip), str_host, INET_ADDRSTRLEN);
                     
                     LOGI("use vpn ip [%s] %u:%d", str_host, vpn_ip, vpn_port);
-                    memcpy(server_head, &vpn_info, sizeof(vpn_info));
-                    start_pos = sizeof(vpn_info);
+                    memcpy(server_head + start_pos, &vpn_info, sizeof(vpn_info));
+                    start_pos += sizeof(vpn_info);
                 }
                 memcpy(server_head + start_pos, pubkey, 66);
                 uint8_t m_len = (uint8_t)(strlen(enc_method));
@@ -1197,6 +1220,7 @@ remote_send_cb(EV_P_ ev_io *w, int revents)
 
     if (!remote_send_ctx->connected) {
 #ifdef TCP_FASTOPEN_WINSOCK
+#error fuck
         if (fast_open) {
             // Check if ConnectEx is done
             if (!remote->connect_ex_done) {
@@ -1479,6 +1503,7 @@ create_remote(listen_ctx_t *listener,
     int opt = 1;
     setsockopt(remotefd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
 #ifdef SO_NOSIGPIPE
+
     setsockopt(remotefd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
 #endif
 
@@ -1504,6 +1529,7 @@ create_remote(listen_ctx_t *listener,
     // Setup
     setnonblocking(remotefd);
 #ifdef SET_INTERFACE
+#error fuck
     if (listener->iface) {
         if (setinterface(remotefd, listener->iface) == -1)
             ERROR("setinterface");
@@ -1624,6 +1650,8 @@ static void* update_config_thread(void* test) {
             }
             route_ip_arr[invalid_idx]->ip = conf.route_ip;
             route_ip_arr[invalid_idx]->port = conf.route_port;
+            ex_route_ip_arr[invalid_idx]->ip = conf.ex_route_ip;
+            ex_route_ip_arr[invalid_idx]->port = conf.ex_route_port;
             valid_index = invalid_idx;
             sleep(1);
         }
@@ -1663,6 +1691,8 @@ main(int argc, char **argv)
 
     route_ip_arr[0] = (struct route_ip_info*)ss_malloc(sizeof(struct route_ip_info));
     route_ip_arr[1] = (struct route_ip_info*)ss_malloc(sizeof(struct route_ip_info));
+    ex_route_ip_arr[0] = (struct route_ip_info*)ss_malloc(sizeof(struct route_ip_info));
+    ex_route_ip_arr[1] = (struct route_ip_info*)ss_malloc(sizeof(struct route_ip_info));
     memset(remote_addr, 0, sizeof(ss_addr_t) * MAX_REMOTE_NUM);
 
     
@@ -1904,6 +1934,11 @@ main(int argc, char **argv)
         route_ip_arr[0]->port = route_port;
         route_ip_arr[1]->ip = route_ip;
         route_ip_arr[1]->port = route_port;
+        
+        ex_route_ip_arr[0]->ip = conf->ex_route_ip;
+        ex_route_ip_arr[0]->port = conf->ex_route_port;
+        ex_route_ip_arr[1]->ip = conf->ex_route_ip;
+        ex_route_ip_arr[1]->port = conf->ex_route_port;
         LOGI("use smart route[%d], route_ip[%u], route port[%d],"
             "vpn_ip[%u], vpn_port[%d], seckey[%s], pubkey[%s], method[%s] status_file[%s]",
             use_smart_route, route_ip, route_port, vpn_ip, vpn_port, seckey, pubkey, enc_method, status_file);
@@ -2232,8 +2267,9 @@ main(int argc, char **argv)
 
     ss_free(route_ip_arr[0]);
     ss_free(route_ip_arr[1]);
-        
-        printf("exit local server success.\n");
+    ss_free(ex_route_ip_arr[0]);
+    ss_free(ex_route_ip_arr[1]);
+    printf("exit local server success.\n");
     return ret_val;
 }
 
